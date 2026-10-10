@@ -1,0 +1,10 @@
+FROM debian:12.12
+
+RUN umask 0 && mkdir -p /out && chmod 777 /out
+RUN apt-get update
+RUN apt-get install -y mount
+RUN apt-get install -y fuse3 libfuse3-3
+RUN apt-get install -y liburing2 liburing-dev
+RUN apt-get install -y libext2fs-dev
+RUN apt-get install -y libntfs-3g89 ntfs-3g-dev
+RUN apt-get install -y valgrind

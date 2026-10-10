@@ -1,0 +1,6 @@
+; -*- mode: org -*-
+
+** TODO add a test for ext2_blkiter_init() that exercises -EINVAL and -ENOENT.
+** TODO add a test /a.out/ to 13-realpath.
+** TODO --track-fds=yes is useless. It only prints open files, but does not
+   make Valgrind exit with a non-zero exit code.

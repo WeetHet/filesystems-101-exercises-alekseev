@@ -1,0 +1,7 @@
+FROM fedora:40
+
+RUN umask 0 && mkdir -p /out && chmod 777 /out
+RUN yum install -y util-linux-core
+RUN yum install -y fuse3 fuse3-libs
+RUN yum install -y liburing liburing-devel
+RUN yum install -y valgrind
