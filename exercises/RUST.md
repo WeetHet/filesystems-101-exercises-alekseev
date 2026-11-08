@@ -2,12 +2,19 @@
 
 You can write solutions to these exercises in Rust instead of C:
 
-| exercise           | the function lib.rs must define           |
-| ------------------ | ----------------------------------------- |
-| 00-ps              | `pub fn ps()`                             |
-| 01-lsof            | `pub fn lsof()`                           |
-| 02-fuse-helloworld | `pub fn helloworld(mntp: &CStr) -> c_int` |
-| 13-realpath        | `pub fn abspath(path: &CStr)`             |
+| exercise                 | the function lib.rs must define                                                                 |
+| ------------------------ | ----------------------------------------------------------------------------------------------- |
+| 00-ps                    | `pub fn ps()`                                                                                   |
+| 01-lsof                  | `pub fn lsof()`                                                                                 |
+| 02-fuse-helloworld       | `pub fn helloworld(mntp: &CStr) -> c_int`                                                       |
+| 03-io_uring              | `pub fn copy(fd_in: BorrowedFd, fd_out: BorrowedFd) -> Result<(), Errno>`                       |
+| 04-ext2-read-file        | `pub fn dump_file(img: BorrowedFd, inode_nr: c_int, out: BorrowedFd) -> Result<(), Errno>`      |
+| 05-ext2-read-dir         | `pub fn dump_dir(img: BorrowedFd, inode_nr: c_int) -> Result<(), Errno>`                        |
+| 06-ext2-walk-path        | `pub fn dump_file(img: BorrowedFd, path: &CStr, out: BorrowedFd) -> Result<(), Errno>`          |
+| 07-ntfs-read-file        | `pub fn dump_file(img: BorrowedFd, path: &CStr, out: BorrowedFd) -> Result<(), Errno>`          |
+| 08-ext2-read-sparse-file | `pub fn dump_file(img: BorrowedFd, inode_nr: c_int, out: BorrowedFd) -> Result<(), Errno>`      |
+| 10-ext2-fuse             | `pub fn ext2fuse(img: BorrowedFd, mntp: &CStr) -> c_int`                                        |
+| 13-realpath              | `pub fn abspath(path: &CStr)`                                                                   |
 
 To do that, edit `<exercise>/lib.rs`. Your code would be called via the C test
 harness the same way the C solution would. The tests are the same for both.
@@ -76,9 +83,11 @@ pub fn lsof() {
 
 ## Building
 
-To build run `make -f Makefile.rust` in `<exercise>`. It eeds rustc 1.85 or
-newer on `PATH`, plus `bindgen`, `curl`, `tar`, `sha256sum` and the Valgrind
-headers.
+To build run `make -f Makefile.rust` in `<exercise>`. It needs rustc 1.85 or
+newer on `PATH`, plus bindgen 0.71 or newer, `curl`, `tar`, `sha256sum` and the
+Valgrind headers. Like the C build, an exercise needs the headers of its
+library: libfuse3 (02, 10), liburing (03), libext2fs (04, 05, 06, 08, 10) or
+ntfs-3g (07).
 
 The first build downloads the crates above and compiles them into
 `~/.cache/fs101-rust`, later builds reuse them until rustc changes. Build

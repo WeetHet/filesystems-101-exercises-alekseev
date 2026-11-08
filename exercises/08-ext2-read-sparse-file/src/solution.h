@@ -2,8 +2,8 @@
 
 /**
    Implement this function to copy the content of an inode @inode_nr
-   to a file descriptor @out. @img is a file descriptor of an open
-   ext2 image.
+   to a file descriptor @out. A file at @inode_nr may be a sparse file.
+   @img is a file descriptor of an open ext2 image.
 
    It suffices to support single- and double-indirect blocks.
 

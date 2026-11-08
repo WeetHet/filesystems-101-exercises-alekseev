@@ -32,7 +32,7 @@ void ext2_fs_free(struct ext2_fs *fs);
    Return values:
    * 0 if successful,
    * a (negative) errno code if an IO or memory allocation error occurred,
-   * -EINVAL if the inode number is out range,
+   * -EINVAL if the inode number is out of range,
    * -ENOENT if the inode number is valid, but the inode is not in use,
    * -EPROTO if the inode has a corrupted block list (e.g. block numbers
              are out of range).

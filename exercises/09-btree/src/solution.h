@@ -16,7 +16,7 @@ void btree_free(struct btree *t);
 /* Insert a value @x into @t. Inserting a value already present in @t
    must be a no-op. */
 void btree_insert(struct btree *t, int x);
-/* Delete a value @x from @t. Deleting and item not present in @t
+/* Delete a value @x from @t. Deleting an item not present in @t
    must be a no-op. */
 void btree_delete(struct btree *t, int x);
 /* Test whether @t contains @x, or not. */
@@ -28,13 +28,13 @@ bool btree_contains(struct btree *t, int x);
    from smallest to largest.
 
    Iterators will not be used concurrently with btree_insert()
-   and btree_remove().
+   and btree_delete().
  */
 struct btree_iter;
 
 /* Create an iterator over @t. */
 struct btree_iter* btree_iter_start(struct btree *t);
-/* Release all memory allocated to %t. */
+/* Release all memory allocated to @i. */
 void btree_iter_end(struct btree_iter *i);
 
 /* Advance the iterator @i. If @i can be advanced, put the new

@@ -7,8 +7,8 @@
 
    Directory entries are guaranteed to be regular files or directories.
 
-   If a copy was successful, return 0. If an error occurred during
-   a read or a write, return -errno.
+   If all directory entries were read and parsed successfully, return 0.
+   Otherwise, return -errno.
 */
 int dump_dir(int img, int inode_nr);
 

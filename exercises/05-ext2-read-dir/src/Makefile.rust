@@ -1,0 +1,5 @@
+HARNESS_SRC := main.c callbacks.c
+BINDGEN_HEADERS := ext2fs/ext2_fs.h
+BINDGEN_FLAGS := --allowlist-file '.*/ext2fs/ext2_fs\.h'
+
+include ../stdlib/rust.mk

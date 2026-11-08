@@ -1,9 +1,11 @@
 #![allow(non_camel_case_types)]
 
 use core::ffi::{CStr, c_char, c_int, c_uint, c_void};
-use core::ptr;
+use core::marker::PhantomData;
+use core::{mem, ptr, slice};
 
-use libc::{flock, gid_t, mode_t, off_t, pid_t, size_t, ssize_t, stat, statvfs, timespec, uid_t};
+use libc::{dev_t, flock, gid_t, mode_t, off_t, pid_t, size_t, ssize_t, stat, statvfs, timespec, uid_t};
+use rustix::io::Errno;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -93,7 +95,7 @@ pub type fuse_fill_dir_t = Option<
 pub struct fuse_operations {
     pub getattr: Option<unsafe extern "C" fn(*const c_char, *mut stat, *mut fuse_file_info) -> c_int>,
     pub readlink: Option<unsafe extern "C" fn(*const c_char, *mut c_char, size_t) -> c_int>,
-    pub mknod: Option<unsafe extern "C" fn(*const c_char, mode_t, libc::dev_t) -> c_int>,
+    pub mknod: Option<unsafe extern "C" fn(*const c_char, mode_t, dev_t) -> c_int>,
     pub mkdir: Option<unsafe extern "C" fn(*const c_char, mode_t) -> c_int>,
     pub unlink: Option<unsafe extern "C" fn(*const c_char) -> c_int>,
     pub rmdir: Option<unsafe extern "C" fn(*const c_char) -> c_int>,
@@ -262,4 +264,248 @@ pub fn fuse_main(args: &[&CStr], op: &fuse_operations, private_data: *mut c_void
             private_data,
         )
     }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Context {
+    pub uid: uid_t,
+    pub gid: gid_t,
+    pub pid: pid_t,
+    pub umask: mode_t,
+}
+
+pub fn context() -> Option<Context> {
+    let ctx = unsafe { fuse_get_context().as_ref() }?;
+    Some(Context {
+        uid: ctx.uid,
+        gid: ctx.gid,
+        pid: ctx.pid,
+        umask: ctx.umask,
+    })
+}
+
+pub struct DirFiller<'a> {
+    buf: *mut c_void,
+    filler: unsafe extern "C" fn(*mut c_void, *const c_char, *const stat, off_t, fuse_fill_dir_flags) -> c_int,
+    _marker: PhantomData<&'a mut c_void>,
+}
+
+impl DirFiller<'_> {
+    pub fn add(&mut self, name: &CStr, mode: mode_t) -> bool {
+        let mut st: stat = unsafe { mem::zeroed() };
+        st.st_mode = mode;
+        unsafe { (self.filler)(self.buf, name.as_ptr(), &st, 0, 0) == 0 }
+    }
+}
+
+#[allow(unused_variables)]
+pub trait Filesystem: Sync {
+    fn getattr(&self, path: &CStr, st: &mut stat) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn readdir(&self, path: &CStr, filler: &mut DirFiller<'_>) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn open(&self, path: &CStr, fi: &mut fuse_file_info) -> Result<(), Errno> {
+        Ok(())
+    }
+
+    fn read(&self, path: &CStr, buf: &mut [u8], offset: u64, fi: &mut fuse_file_info) -> Result<usize, Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn write(&self, path: &CStr, buf: &[u8], offset: u64, fi: &mut fuse_file_info) -> Result<usize, Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn create(&self, path: &CStr, mode: mode_t, fi: &mut fuse_file_info) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn mknod(&self, path: &CStr, mode: mode_t, dev: dev_t) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn mkdir(&self, path: &CStr, mode: mode_t) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn unlink(&self, path: &CStr) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn rmdir(&self, path: &CStr) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn symlink(&self, target: &CStr, path: &CStr) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn rename(&self, from: &CStr, to: &CStr, flags: c_uint) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn link(&self, from: &CStr, to: &CStr) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn chmod(&self, path: &CStr, mode: mode_t) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn chown(&self, path: &CStr, uid: uid_t, gid: gid_t) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+
+    fn truncate(&self, path: &CStr, size: u64) -> Result<(), Errno> {
+        Err(Errno::NOSYS)
+    }
+}
+
+unsafe fn this<'a, F: Filesystem>() -> &'a F {
+    unsafe { &*(*fuse_get_context()).private_data.cast::<F>() }
+}
+
+unsafe fn cstr<'a>(s: *const c_char) -> &'a CStr {
+    unsafe { CStr::from_ptr(s) }
+}
+
+fn status(r: Result<(), Errno>) -> c_int {
+    match r {
+        Ok(()) => 0,
+        Err(e) => -e.raw_os_error(),
+    }
+}
+
+fn count(r: Result<usize, Errno>) -> c_int {
+    match r {
+        Ok(n) => n.min(c_int::MAX as usize) as c_int,
+        Err(e) => -e.raw_os_error(),
+    }
+}
+
+unsafe extern "C" fn op_getattr<F: Filesystem>(path: *const c_char, st: *mut stat, _fi: *mut fuse_file_info) -> c_int {
+    unsafe { status(this::<F>().getattr(cstr(path), &mut *st)) }
+}
+
+unsafe extern "C" fn op_readdir<F: Filesystem>(
+    path: *const c_char,
+    buf: *mut c_void,
+    filler: fuse_fill_dir_t,
+    _off: off_t,
+    _fi: *mut fuse_file_info,
+    _flags: fuse_readdir_flags,
+) -> c_int {
+    let Some(filler) = filler else { return -libc::EIO };
+    let mut filler = DirFiller {
+        buf,
+        filler,
+        _marker: PhantomData,
+    };
+    unsafe { status(this::<F>().readdir(cstr(path), &mut filler)) }
+}
+
+unsafe extern "C" fn op_open<F: Filesystem>(path: *const c_char, fi: *mut fuse_file_info) -> c_int {
+    unsafe { status(this::<F>().open(cstr(path), &mut *fi)) }
+}
+
+unsafe extern "C" fn op_read<F: Filesystem>(
+    path: *const c_char,
+    buf: *mut c_char,
+    size: size_t,
+    off: off_t,
+    fi: *mut fuse_file_info,
+) -> c_int {
+    unsafe {
+        let buf = slice::from_raw_parts_mut(buf.cast::<u8>(), size);
+        count(this::<F>().read(cstr(path), buf, off as u64, &mut *fi))
+    }
+}
+
+unsafe extern "C" fn op_write<F: Filesystem>(
+    path: *const c_char,
+    buf: *const c_char,
+    size: size_t,
+    off: off_t,
+    fi: *mut fuse_file_info,
+) -> c_int {
+    unsafe {
+        let buf = slice::from_raw_parts(buf.cast::<u8>(), size);
+        count(this::<F>().write(cstr(path), buf, off as u64, &mut *fi))
+    }
+}
+
+unsafe extern "C" fn op_create<F: Filesystem>(path: *const c_char, mode: mode_t, fi: *mut fuse_file_info) -> c_int {
+    unsafe { status(this::<F>().create(cstr(path), mode, &mut *fi)) }
+}
+
+unsafe extern "C" fn op_mknod<F: Filesystem>(path: *const c_char, mode: mode_t, dev: dev_t) -> c_int {
+    unsafe { status(this::<F>().mknod(cstr(path), mode, dev)) }
+}
+
+unsafe extern "C" fn op_mkdir<F: Filesystem>(path: *const c_char, mode: mode_t) -> c_int {
+    unsafe { status(this::<F>().mkdir(cstr(path), mode)) }
+}
+
+unsafe extern "C" fn op_unlink<F: Filesystem>(path: *const c_char) -> c_int {
+    unsafe { status(this::<F>().unlink(cstr(path))) }
+}
+
+unsafe extern "C" fn op_rmdir<F: Filesystem>(path: *const c_char) -> c_int {
+    unsafe { status(this::<F>().rmdir(cstr(path))) }
+}
+
+unsafe extern "C" fn op_symlink<F: Filesystem>(target: *const c_char, path: *const c_char) -> c_int {
+    unsafe { status(this::<F>().symlink(cstr(target), cstr(path))) }
+}
+
+unsafe extern "C" fn op_rename<F: Filesystem>(from: *const c_char, to: *const c_char, flags: c_uint) -> c_int {
+    unsafe { status(this::<F>().rename(cstr(from), cstr(to), flags)) }
+}
+
+unsafe extern "C" fn op_link<F: Filesystem>(from: *const c_char, to: *const c_char) -> c_int {
+    unsafe { status(this::<F>().link(cstr(from), cstr(to))) }
+}
+
+unsafe extern "C" fn op_chmod<F: Filesystem>(path: *const c_char, mode: mode_t, _fi: *mut fuse_file_info) -> c_int {
+    unsafe { status(this::<F>().chmod(cstr(path), mode)) }
+}
+
+unsafe extern "C" fn op_chown<F: Filesystem>(
+    path: *const c_char,
+    uid: uid_t,
+    gid: gid_t,
+    _fi: *mut fuse_file_info,
+) -> c_int {
+    unsafe { status(this::<F>().chown(cstr(path), uid, gid)) }
+}
+
+unsafe extern "C" fn op_truncate<F: Filesystem>(path: *const c_char, size: off_t, _fi: *mut fuse_file_info) -> c_int {
+    unsafe { status(this::<F>().truncate(cstr(path), size as u64)) }
+}
+
+pub fn main<F: Filesystem>(args: &[&CStr], fs: &F) -> c_int {
+    let ops = fuse_operations {
+        getattr: Some(op_getattr::<F>),
+        readdir: Some(op_readdir::<F>),
+        open: Some(op_open::<F>),
+        read: Some(op_read::<F>),
+        write: Some(op_write::<F>),
+        create: Some(op_create::<F>),
+        mknod: Some(op_mknod::<F>),
+        mkdir: Some(op_mkdir::<F>),
+        unlink: Some(op_unlink::<F>),
+        rmdir: Some(op_rmdir::<F>),
+        symlink: Some(op_symlink::<F>),
+        rename: Some(op_rename::<F>),
+        link: Some(op_link::<F>),
+        chmod: Some(op_chmod::<F>),
+        chown: Some(op_chown::<F>),
+        truncate: Some(op_truncate::<F>),
+        ..fuse_operations::EMPTY
+    };
+    fuse_main(args, &ops, ptr::from_ref(fs).cast_mut().cast())
 }

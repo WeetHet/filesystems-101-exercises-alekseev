@@ -1,0 +1,7 @@
+HARNESS_SRC := main.c
+HARNESS_CFLAGS := -I/usr/include/fuse3 -DFUSE_USE_VERSION=31 -pthread
+HARNESS_LDLIBS := -lfuse3
+BINDGEN_HEADERS := ext2fs/ext2_fs.h
+BINDGEN_FLAGS := --allowlist-file '.*/ext2fs/ext2_fs\.h'
+
+include ../stdlib/rust.mk

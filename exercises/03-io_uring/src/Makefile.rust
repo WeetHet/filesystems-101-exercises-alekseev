@@ -1,0 +1,7 @@
+HARNESS_SRC := main.c enforce_uring.c
+HARNESS_CFLAGS := -I/usr/include/liburing -I/usr/include/valgrind
+HARNESS_LDLIBS := -luring
+BINDGEN_HEADERS := liburing.h
+BINDGEN_FLAGS := --allowlist-file '.*/liburing.*'
+
+include ../stdlib/rust.mk

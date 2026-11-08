@@ -1,4 +1,5 @@
 .PHONY: build test rust-project.json
+.DELETE_ON_ERROR:
 
 test: build
 	./a.out
@@ -94,15 +95,34 @@ RUST_EXTERNS := $(foreach c,$(PUBLIC_CRATES),--extern $(call crate_lib,$(c))=$(c
 RUST_STATICLIB := $(RUST_OUT)/libfs101_main.a
 CRATE_COBJS := $(strip $(foreach c,$(CRATES),$(call crate_cobj,$(c))))
 
-a.out: $(HARNESS_SRC) $(wildcard *.h) $(SRC_STDLIB) $(HDR_STDLIB) $(RUST_STATICLIB) $(CRATE_COBJS)
+BINDGEN_OUT := $(RUST_OUT)/bindgen
+BINDGEN_RS := $(if $(BINDGEN_HEADERS),$(BINDGEN_OUT)/bindings.rs)
+BINDGEN_OBJ := $(if $(BINDGEN_HEADERS),$(BINDGEN_OUT)/static_fns.o)
+BINDGEN_ENV := $(if $(BINDGEN_HEADERS),OUT_DIR=$(abspath $(BINDGEN_OUT)))
+
+a.out: $(HARNESS_SRC) $(wildcard *.h) $(SRC_STDLIB) $(HDR_STDLIB) $(RUST_STATICLIB) $(CRATE_COBJS) $(BINDGEN_OBJ)
 	gcc \
 		-std=gnu11 -Wall -Wextra -Werror \
 		-I. -I../stdlib \
 		-D_GNU_SOURCE \
 		$(HARNESS_CFLAGS) \
 		-g -Og \
-		$(HARNESS_SRC) $(RUST_STATICLIB) $(CRATE_COBJS) $(SRC_STDLIB) \
+		$(HARNESS_SRC) $(RUST_STATICLIB) $(BINDGEN_OBJ) $(CRATE_COBJS) $(SRC_STDLIB) \
 		$(HARNESS_LDLIBS)
+
+$(BINDGEN_OUT)/bindings.rs: Makefile.rust
+	@mkdir -p $(BINDGEN_OUT)
+	@printf '#include <%s>\n' $(BINDGEN_HEADERS) > $(BINDGEN_OUT)/bindings.h
+	@: > $(BINDGEN_OUT)/static_fns.c
+	$(BINDGEN) $(abspath $(BINDGEN_OUT)/bindings.h) -o $@ \
+		--formatter prettyplease --use-core --ctypes-prefix ::core::ffi \
+		--no-layout-tests --no-prepend-enum-name \
+		--experimental --clang-macro-fallback \
+		--wrap-static-fns --wrap-static-fns-path $(abspath $(BINDGEN_OUT)/static_fns) \
+		$(BINDGEN_FLAGS) -- -D_GNU_SOURCE $(HARNESS_CFLAGS)
+
+$(BINDGEN_OUT)/static_fns.o: $(BINDGEN_OUT)/bindings.rs
+	gcc -c -g -O1 -D_GNU_SOURCE $(HARNESS_CFLAGS) -o $@ $(BINDGEN_OUT)/static_fns.c
 
 $(RUST_OUT)/libstd_forbidden.rlib: ../stdlib/std_forbidden.rs
 	@mkdir -p $(RUST_OUT)
@@ -113,9 +133,9 @@ $(RUST_OUT)/libfs101_rt.rlib: ../stdlib/fs101_rt.rs $(call crate_rlib,valgrind-r
 	$(RUSTC) $(RUSTFLAGS) --extern valgrind_requests=$(call crate_rlib,valgrind-requests) \
 		--crate-type=rlib --crate-name=fs101_rt -o $@ $<
 
-$(RUST_OUT)/libfs101.rlib: fs101.rs $(RUST_STDLIB) $(PUBLIC_RLIBS)
+$(RUST_OUT)/libfs101.rlib: fs101.rs $(RUST_STDLIB) $(PUBLIC_RLIBS) $(BINDGEN_RS)
 	@mkdir -p $(RUST_OUT)
-	$(RUSTC) $(RUSTFLAGS) $(RUST_EXTERNS) --crate-type=rlib --crate-name=fs101 -o $@ fs101.rs
+	$(BINDGEN_ENV) $(RUSTC) $(RUSTFLAGS) $(RUST_EXTERNS) --crate-type=rlib --crate-name=fs101 -o $@ fs101.rs
 
 $(RUST_OUT)/libsolution.rlib: $(RUST_SRC) $(RUST_OUT)/libfs101.rlib $(RUST_OUT)/libstd_forbidden.rlib
 	@grep -Eq '^[[:space:]]*#!\[no_std\]' lib.rs || { \
@@ -149,11 +169,14 @@ crate_deps_json = $(foreach d,$($(1)_DEPS),$(call json_dep,$(call dep_crate,$(d)
 crate_cfgs_json = $(foreach f,$($(1)_FEATURES),"feature=\"$(f)\"") $(foreach c,$(call crate_cfgs,$(1)),"$(subst ",\",$(c))")
 crate_env_json = $(if $($(1)_BINDGEN),"env":{"OUT_DIR":"$(call crate_out,$(1))"}$(comma))
 crate_json = {"display_name":"$(1)","root_module":"$(call crate_dir,$(1))/src/lib.rs","edition":"$($(1)_EDITION)",$(call crate_env_json,$(1))"deps":$(call json_list,$(call crate_deps_json,$(1))),"cfg":$(call json_list,$(call crate_cfgs_json,$(1))),"is_workspace_member":false}
-fs101_json = {"display_name":"fs101","root_module":"fs101.rs","edition":"2024","deps":[{"crate":$(crate_index_libc),"name":"libc"}],"cfg":[],"is_workspace_member":true,"source":{"include_dirs":[".","../stdlib"],"exclude_dirs":[]}}
-solution_deps_json = {"crate":$(words $(CRATES)),"name":"fs101"} $(foreach c,$(PUBLIC_CRATES),$(call json_dep,$(c),$(call crate_lib,$(c))))
+public_deps_json = $(foreach c,$(PUBLIC_CRATES),$(call json_dep,$(c),$(call crate_lib,$(c))))
+fs101_env_json = $(if $(BINDGEN_HEADERS),"env":{"OUT_DIR":"$(abspath $(BINDGEN_OUT))"}$(comma))
+fs101_include_dirs = "." "../stdlib" $(if $(BINDGEN_HEADERS),"$(abspath $(BINDGEN_OUT))")
+fs101_json = {"display_name":"fs101","root_module":"fs101.rs","edition":"2024",$(fs101_env_json)"deps":$(call json_list,$(public_deps_json)),"cfg":[],"is_workspace_member":true,"source":{"include_dirs":$(call json_list,$(fs101_include_dirs)),"exclude_dirs":[]}}
+solution_deps_json = {"crate":$(words $(CRATES)),"name":"fs101"} $(public_deps_json)
 solution_json = {"display_name":"solution","root_module":"lib.rs","edition":"2024","deps":$(call json_list,$(solution_deps_json)),"cfg":[],"is_workspace_member":true}
 sysroot_src_json = $(if $(SYSROOT_SRC),"sysroot_src":"$(SYSROOT_SRC)"$(comma))
 rust_project_json = {"sysroot":"$(SYSROOT)",$(sysroot_src_json)"crates":$(call json_list,$(foreach c,$(CRATES),$(call crate_json,$(c))) $(fs101_json) $(solution_json))}
 
-rust-project.json: $(foreach c,$(CRATES),$(call crate_dir,$(c))/Cargo.toml $(call crate_bindings,$(c)))
+rust-project.json: $(foreach c,$(CRATES),$(call crate_dir,$(c))/Cargo.toml $(call crate_bindings,$(c))) $(BINDGEN_RS)
 	@printf '%s\n' '$(rust_project_json)' > $@

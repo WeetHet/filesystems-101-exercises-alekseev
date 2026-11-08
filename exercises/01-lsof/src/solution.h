@@ -3,7 +3,7 @@
 #include <unistd.h>
 
 /**
-   Implement this function to list processes. It must call report_file()
+   Implement this function to list open files. It must call report_file()
    for each open file. If an error occurs when accessing a file or
    a directory, it must call report_error().
 */

@@ -1,0 +1,9 @@
+HARNESS_SRC := main.c
+HARNESS_CFLAGS := -I/usr/include/ntfs-3g
+HARNESS_LDLIBS := -lntfs-3g
+BINDGEN_HEADERS := stddef.h stdarg.h time.h sys/types.h sys/stat.h \
+	ntfs-3g/types.h ntfs-3g/device.h ntfs-3g/volume.h ntfs-3g/inode.h \
+	ntfs-3g/attrib.h ntfs-3g/dir.h ntfs-3g/unistr.h ntfs-3g/logging.h
+BINDGEN_FLAGS := --allowlist-file '.*/ntfs-3g/.*'
+
+include ../stdlib/rust.mk
