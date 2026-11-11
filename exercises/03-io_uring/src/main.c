@@ -65,7 +65,7 @@ int main(int argc, char **argv)
 	}
 
 	if (fail_io_at > 0) {
-		if (r != -EFAULT)
+		if (r != -EBADF)
 			errx(1, "an IO has failed but that was never reported");
 		r = 0;
 	}

@@ -32,19 +32,45 @@ func init() {
 	auxSrc, err := fs.Sub(__auxSrc, "src")
 	errutil.FatalIf(err)
 
-	testcases := make([]exercises.Testcase, len(testLengths))
+	var testcases []exercises.Testcase
 	for i, len := range testLengths {
-		testcases[i] = exercises.Testcase{
+		testcases = append(testcases, exercises.Testcase{
 			Name: fmt.Sprintf("%02d", i),
-			Args: []string{"test", fmt.Sprintf("%d", len)},
+			Args: []string{"test", fmt.Sprintf("%d", len), "0", "0"},
 			ExpectedOutputs: []exercises.ExpectedOutputFile{{
 				Name:      "out",
 				IfMissing: "solution never created the output file",
 				Verifier:  makeVerifier(len),
 			}},
 			WithoutTrackFds: true,
-		}
+		})
 	}
+
+	testcases = append(testcases, exercises.Testcase{
+		Name:            "submit-fail-1",
+		Args:            []string{"test", "8393727", "1", "0"},
+		ExpectedOutputs: nil,
+		WithoutTrackFds: true,
+	})
+	testcases = append(testcases, exercises.Testcase{
+		Name:            "submit-fail-2",
+		Args:            []string{"test", "8393727", "2", "0"},
+		ExpectedOutputs: nil,
+		WithoutTrackFds: true,
+	})
+
+	testcases = append(testcases, exercises.Testcase{
+		Name:            "io-fail-1",
+		Args:            []string{"test", "8393727", "0", "1"},
+		ExpectedOutputs: nil,
+		WithoutTrackFds: true,
+	})
+	testcases = append(testcases, exercises.Testcase{
+		Name:            "io-fail-2",
+		Args:            []string{"test", "8393727", "0", "2"},
+		ExpectedOutputs: nil,
+		WithoutTrackFds: true,
+	})
 
 	exercises.RegisterExercise(exercises.Exercise{
 		Name:      "03-io_uring",

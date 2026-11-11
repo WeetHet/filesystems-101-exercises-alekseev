@@ -31,7 +31,7 @@ static void corrupt_sqe(struct io_uring *ring)
 		return;
 
 	sqe = &sq->sqes[(tail-1) & sq->ring_mask];
-	sqe->addr = -1;
+	sqe->fd = -1;
 }
 
 int I_WRAP_SONAME_FNNAME_ZZ(liburingZdsoZa,ioZuuringZusubmitZa)(struct io_uring *ring)
